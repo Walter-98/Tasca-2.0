@@ -1,0 +1,17 @@
+TASCA — VERSIONE INDIPENDENTE PER GITHUB
+
+Questa cartella contiene l'app e le istruzioni. Non è ancora collegata a un servizio online.
+
+PER CHI LA PUBBLICA
+Apri README.md e poi docs/PUBBLICARE.md.
+Servono un repository GitHub e un progetto Supabase. La configurazione si fa una sola volta.
+La cartella nascosta .github contiene la pubblicazione automatica e va caricata anche lei.
+
+PER CHI LA USA
+Dopo la pubblicazione riceverai un link. Aprilo sul telefono e tocca Installa Tasca.
+Android: Chrome > menu > Installa app.
+iPhone: Safari > Condividi > Aggiungi alla schermata Home.
+Crea il tuo account o usa Google, se attivato. Nessun account ChatGPT.
+
+Scaricare lo ZIP non installa l'app sul telefono: lo ZIP serve al gestore per pubblicarla.
+Account e conti condivisi richiedono Internet. I vecchi dati non sono trasferiti automaticamente.
