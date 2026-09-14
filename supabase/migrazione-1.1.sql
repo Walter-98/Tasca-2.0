@@ -1,63 +1,40 @@
--- Tasca 1.1. Run once in a NEW Supabase project, as project administrator.
--- Financial tables are not exposed through the Data API. Only the two checked RPCs below are callable.
+-- Tasca 1.1 — obiettivi di risparmio, divisione spese, rimborsi.
+-- Da eseguire UNA VOLTA nel SQL Editor del progetto Supabase gia' in uso.
+-- Non tocca i dati esistenti: aggiunge due tabelle, una colonna e riscrive le due funzioni.
 begin;
-create schema if not exists tasca;
-revoke all on schema tasca from public, anon, authenticated;
-create table tasca.accounts(id text primary key,owner_id uuid not null references auth.users(id),name text not null check(length(name) between 1 and 50),opening bigint not null check(abs(opening)<=100000000000),opening_date date not null check(opening_date between '2000-01-01' and '2100-12-31'));
-create table tasca.members(account_id text references tasca.accounts(id) on delete cascade,user_id uuid references auth.users(id),primary key(account_id,user_id));
-create index on tasca.accounts(owner_id);
-create index on tasca.members(user_id);
-create table tasca.movements(id text primary key,owner_id uuid not null references auth.users(id),type text not null check(type in ('income','expense','transfer')),amount bigint not null check(amount between 1 and 100000000000),category text not null check(length(category) between 1 and 50),description text not null check(length(description) between 1 and 160),date date not null check(date between '2000-01-01' and '2100-12-31'),account_id text references tasca.accounts(id),to_account_id text references tasca.accounts(id),author text not null,updated_by text not null,split smallint check(split between 0 and 100),check((type='transfer' and account_id is not null and to_account_id is not null and account_id<>to_account_id) or (type<>'transfer' and to_account_id is null)));
-create index on tasca.movements(account_id,date);
-create index on tasca.movements(to_account_id,date);
-create index on tasca.movements(owner_id);
-create table tasca.budgets(owner_id uuid references auth.users(id),month text check(month ~ '^20[0-9]{2}-(0[1-9]|1[0-2])$|^2100-(0[1-9]|1[0-2])$'),amount bigint not null check(amount between 0 and 100000000000),primary key(owner_id,month));
-create table tasca.recurring(id text primary key,owner_id uuid not null references auth.users(id),account_id text not null references tasca.accounts(id),type text not null check(type in ('income','expense')),amount bigint not null check(amount between 1 and 100000000000),category text not null check(length(category) between 1 and 50),description text not null check(length(description) between 1 and 160),start_date date not null check(start_date between '2000-01-01' and '2100-12-31'),end_date date check(end_date>=start_date and end_date<='2100-12-31'),active integer not null check(active in (0,1)));
-create index on tasca.recurring(account_id);
-create table tasca.occurrences(id text primary key,recurring_id text not null references tasca.recurring(id),date date not null,unique(recurring_id,date));
-create table tasca.goals(id text primary key,owner_id uuid not null references auth.users(id),name text not null check(length(name) between 1 and 60),target bigint not null check(target between 1 and 100000000000),saved bigint not null default 0 check(saved between 0 and 100000000000),due_date date check(due_date between '2000-01-01' and '2100-12-31'),created_at timestamptz not null default now());
-create index on tasca.goals(owner_id);
-create table tasca.settlements(id text primary key,account_id text not null references tasca.accounts(id) on delete cascade,from_user uuid not null references auth.users(id),to_user uuid not null references auth.users(id),amount bigint not null check(amount between 1 and 100000000000),date date not null check(date between '2000-01-01' and '2100-12-31'),note text not null default '' check(length(note)<=160),created_by uuid not null references auth.users(id),check(from_user<>to_user));
-create index on tasca.settlements(account_id);
-create table tasca.invites(token_hash text primary key,account_id text not null references tasca.accounts(id) on delete cascade,created_at timestamptz not null default now(),expires_at timestamptz not null,used_by uuid references auth.users(id));
-create index on tasca.invites(account_id);
-alter table tasca.accounts enable row level security;
-alter table tasca.members enable row level security;
-alter table tasca.movements enable row level security;
-alter table tasca.budgets enable row level security;
-alter table tasca.recurring enable row level security;
-alter table tasca.occurrences enable row level security;
-alter table tasca.invites enable row level security;
+
+-- 1. Obiettivi di risparmio ------------------------------------------------
+create table if not exists tasca.goals(
+ id text primary key,
+ owner_id uuid not null references auth.users(id),
+ name text not null check(length(name) between 1 and 60),
+ target bigint not null check(target between 1 and 100000000000),
+ saved bigint not null default 0 check(saved between 0 and 100000000000),
+ due_date date check(due_date between '2000-01-01' and '2100-12-31'),
+ created_at timestamptz not null default now());
+create index if not exists goals_owner_idx on tasca.goals(owner_id);
 alter table tasca.goals enable row level security;
+
+-- 2. Divisione delle spese: quota percentuale a carico di chi registra -----
+alter table tasca.movements add column if not exists split smallint check(split between 0 and 100);
+
+-- 3. Rimborsi tra partecipanti di un conto condiviso -----------------------
+create table if not exists tasca.settlements(
+ id text primary key,
+ account_id text not null references tasca.accounts(id) on delete cascade,
+ from_user uuid not null references auth.users(id),
+ to_user uuid not null references auth.users(id),
+ amount bigint not null check(amount between 1 and 100000000000),
+ date date not null check(date between '2000-01-01' and '2100-12-31'),
+ note text not null default '' check(length(note)<=160),
+ created_by uuid not null references auth.users(id),
+ check(from_user<>to_user));
+create index if not exists settlements_account_idx on tasca.settlements(account_id);
 alter table tasca.settlements enable row level security;
 revoke all on all tables in schema tasca from public,anon,authenticated;
 
-create function tasca.require_user() returns uuid language plpgsql stable set search_path='' as $$
-declare u uuid:=auth.uid();
-begin
- if u is null or not exists(select 1 from auth.users where id=u and email_confirmed_at is not null) then raise exception 'Tasca: Accedi e conferma la tua email prima di usare i conti.';end if;
- return u;
-end $$;
-create function tasca.can_access(a text,u uuid) returns boolean language sql stable set search_path='' as $$
- select exists(select 1 from tasca.accounts where id=a and owner_id=u) or exists(select 1 from tasca.members where account_id=a and user_id=u)
-$$;
-create function tasca.assert_account(a text,u uuid,owner_only boolean default false) returns void language plpgsql set search_path='' as $$
-begin
- if a is null or not tasca.can_access(a,u) or (owner_only and not exists(select 1 from tasca.accounts where id=a and owner_id=u)) then raise exception 'Tasca: Non hai il permesso di modificare questo conto.';end if;
-end $$;
-create function tasca.assert_movement(m tasca.movements,u uuid) returns void language plpgsql set search_path='' as $$
-begin
- if m.id is null then raise exception 'Tasca: Movimento non disponibile.';end if;
- if m.account_id is null then if m.owner_id<>u then raise exception 'Tasca: Movimento non disponibile.';end if;else perform tasca.assert_account(m.account_id,u);end if;
- if m.to_account_id is not null then perform tasca.assert_account(m.to_account_id,u);end if;
-end $$;
-create function tasca.assert_date(a text,d date) returns void language plpgsql set search_path='' as $$
-begin
- if d is null or d<'2000-01-01' or d>'2100-12-31' then raise exception 'Tasca: Data non valida.';end if;
- if a is not null and d<(select opening_date from tasca.accounts where id=a) then raise exception 'Tasca: La data precede il saldo iniziale del conto.';end if;
-end $$;
-
-create function public.tasca_snapshot() returns jsonb language plpgsql security definer set search_path='' as $$
+-- 4. Lettura ---------------------------------------------------------------
+create or replace function public.tasca_snapshot() returns jsonb language plpgsql security definer set search_path='' as $$
 declare u uuid:=tasca.require_user();result jsonb;
 begin
  select jsonb_build_object(
@@ -74,7 +51,8 @@ begin
  return result;
 end $$;
 
-create function public.tasca_mutate(kind text,v jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
+-- 5. Scrittura -------------------------------------------------------------
+create or replace function public.tasca_mutate(kind text,v jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
 declare u uuid:=tasca.require_user();act text:=coalesce(v->>'action','movement');ident text:=v->>'id';a text:=nullif(v->>'account_id','');dest text:=nullif(v->>'to_account_id','');d date;who text;old tasca.movements;r tasca.recurring;iv tasca.invites;token text;occ text;expected date;g tasca.goals;st tasca.settlements;other uuid;sp smallint;
 begin
  -- Serialize mutations including membership revocation: authorization and write form one transaction.
@@ -188,6 +166,7 @@ begin
 exception when check_violation or not_null_violation or invalid_text_representation or datetime_field_overflow or numeric_value_out_of_range then
  raise exception 'Tasca: Controlla importo, date e campi obbligatori.';
 end $$;
+
 revoke all on all functions in schema tasca from public,anon,authenticated;
 revoke all on function public.tasca_snapshot(),public.tasca_mutate(text,jsonb) from public,anon,authenticated;
 grant execute on function public.tasca_snapshot(),public.tasca_mutate(text,jsonb) to authenticated;
