@@ -182,6 +182,19 @@ begin
     if act='confirm' then insert into tasca.movements(id,owner_id,type,amount,category,description,date,account_id,to_account_id,author,updated_by,split) values(occ,u,r.type,r.amount,r.category,r.description,d,r.account_id,null,who,who,null);end if;
     insert into tasca.occurrences values(occ,r.id,d);
    end if;
+  elsif act='erase_me' then
+   if coalesce(v->>'confirm','')<>'ELIMINA' then raise exception 'Tasca: Scrivi ELIMINA per confermare la chiusura del tuo account.';end if;
+   delete from tasca.settlements where from_user=u or to_user=u or created_by=u or account_id in(select id from tasca.accounts where owner_id=u);
+   delete from tasca.invites where used_by=u or account_id in(select id from tasca.accounts where owner_id=u);
+   delete from tasca.occurrences where recurring_id in(select id from tasca.recurring where owner_id=u or account_id in(select id from tasca.accounts where owner_id=u));
+   delete from tasca.recurring where owner_id=u or account_id in(select id from tasca.accounts where owner_id=u);
+   delete from tasca.movements where owner_id=u or account_id in(select id from tasca.accounts where owner_id=u) or to_account_id in(select id from tasca.accounts where owner_id=u);
+   delete from tasca.members where user_id=u or account_id in(select id from tasca.accounts where owner_id=u);
+   delete from tasca.accounts where owner_id=u;
+   delete from tasca.budgets where owner_id=u;
+   delete from tasca.goals where owner_id=u;
+   delete from auth.users where id=u;
+   return '{"ok":true,"erased":true}'::jsonb;
   else raise exception 'Tasca: Operazione non valida.';end if;
  else raise exception 'Tasca: Operazione non valida.';end if;
  return '{"ok":true}'::jsonb;
