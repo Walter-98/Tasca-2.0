@@ -4,7 +4,7 @@ import {Upload,FileSpreadsheet,CircleCheck,TriangleAlert} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {apiFetch} from './api';
-import {leggiCsv,rilevaColonne,convertiRighe,impronta,categoriaDa,money,type Account,type RigaCsv} from '@/lib/finance';
+import {leggiCsv,pdfAGriglia,rilevaColonne,convertiRighe,impronta,categoriaDa,money,type Account,type RigaCsv} from '@/lib/finance';
 const SPESE=['Casa','Spesa alimentare','Trasporti','Ristoranti e bar','Shopping','Salute','Tempo libero','Abbonamenti','Altro'];
 const ENTRATE=['Stipendio','Lavoro extra','Rimborsi','Regali','Altro'];
 // Regole di partenza: coprono la gran parte degli estratti conto italiani.
@@ -39,17 +39,31 @@ export default function Importa({accounts,movimenti,refresh}:{accounts:Account[]
    const categoria=r.type==='income'?(trovata&&ENTRATE.includes(trovata)?trovata:'Altro'):(trovata&&SPESE.includes(trovata)?trovata:'Altro');
    return {...r,categoria,doppione,tieni:!doppione};
   }));
- }
- async function leggiFile(e:React.ChangeEvent<HTMLInputElement>){
+ } async function leggiFile(e:React.ChangeEvent<HTMLInputElement>){
   setError('');setStato('');
   const f=e.target.files?.[0];if(!f)return;
+  const pdf=/\.pdf$/i.test(f.name)||f.type==='application/pdf';
   try{
-   const g=leggiCsv(await f.text());
-   if(g.length<2)throw Error('vuoto');
+   let g:string[][];
+   if(pdf){
+    setStato('Lettura del PDF…');
+    const {estraiPdf}=await import('./lib/pdf');
+    g=pdfAGriglia(await estraiPdf(f));
+    setStato('');
+    if(g.length<2)throw Error('nessun movimento');
+   }else{
+    g=leggiCsv(await f.text());
+    if(g.length<2)throw Error('vuoto');
+   }
    const c=rilevaColonne(g[0]);
    setGriglia(g);setCol(c);setIntestazione(true);setConto(accounts[0]?.id||'');
    prepara(g,c,true);setAperto(true);
-  }catch{setError('Non riesco a leggere questo file. Serve un CSV esportato dalla banca.');}
+  }catch{
+   setStato('');
+   setError(pdf
+    ?'Da questo PDF non riesco a tirare fuori i movimenti. Succede quando l’estratto conto è la scansione di un foglio di carta: le parole sono un’immagine, non testo. In quel caso esporta il CSV dal sito della banca.'
+    :'Non riesco a leggere questo file. Serve un CSV o un PDF esportato dalla banca.');
+  }
   finally{if(file.current)file.current.value='';}
  }
  function cambiaColonna(chiave:keyof typeof col,valore:number){
@@ -79,11 +93,11 @@ export default function Importa({accounts,movimenti,refresh}:{accounts:Account[]
   {(intestazione?griglia[0]||[]:(griglia[0]||[]).map((_,i)=>`Colonna ${i+1}`)).map((c,i)=><option key={i} value={i}>{c||`Colonna ${i+1}`}</option>)}
  </>;
  return <section className="panel importa">
-  <div className="panel-head"><div><h2>Importa estratto conto</h2><p className="meta">Il file CSV della banca, senza riscrivere niente a mano.</p></div>
-   <Button variant="outline" onClick={()=>file.current?.click()} disabled={!accounts.length}><Upload size={17}/> Scegli file CSV</Button>
-   <input ref={file} type="file" accept=".csv,text/csv,text/plain" hidden onChange={leggiFile}/>
+  <div className="panel-head"><div><h2>Importa estratto conto</h2><p className="meta">Il file della banca, CSV o PDF, senza riscrivere niente a mano.</p></div>
+   <Button variant="outline" onClick={()=>file.current?.click()} disabled={!accounts.length}><Upload size={17}/> Scegli file</Button>
+   <input ref={file} type="file" accept=".csv,.pdf,text/csv,text/plain,application/pdf" hidden onChange={leggiFile}/>
   </div>
-  <p className="planning-help">{accounts.length?'Dalla tua banca esporta i movimenti in CSV (a volte si chiama «esporta in Excel»). Tasca riconosce da solo le colonne, ti mostra l’anteprima e scarta i doppioni.':'Crea prima un conto: i movimenti importati devono finire da qualche parte.'}</p>
+  <p className="planning-help">{accounts.length?'Dalla tua banca scarica l’estratto conto: va bene il CSV (a volte si chiama «esporta in Excel») e va bene anche il PDF. Tasca riconosce da solo le colonne, ti mostra l’anteprima e scarta i doppioni. Il file resta sul tuo dispositivo. Dal PDF controlla sempre l’anteprima: i PDF sono fatti per essere letti dalle persone, non dai programmi.':'Crea prima un conto: i movimenti importati devono finire da qualche parte.'}</p>
   {stato&&!aperto&&<p role="status" className="feedback">{stato}</p>}
   {error&&!aperto&&<p role="alert" className="error">{error}</p>}
   <Dialog open={aperto} onOpenChange={o=>!o&&!busy&&setAperto(false)}><DialogContent className="form-dialog wide">

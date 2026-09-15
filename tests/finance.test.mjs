@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {monthlyDates,accountBalance,validDate,othersShare,accountDebts,upcomingDue,monthlyTarget,addDays,monthsBetween,leggiCsv,leggiImporto,leggiData,rilevaColonne,convertiRighe,semplificaSaldi,statisticheAnno,impronta,categoriaDa,saldiGruppo} from '../src/lib/finance.ts';
+import {monthlyDates,accountBalance,validDate,othersShare,accountDebts,upcomingDue,monthlyTarget,addDays,monthsBetween,leggiCsv,leggiImporto,leggiData,rilevaColonne,convertiRighe,semplificaSaldi,statisticheAnno,impronta,categoriaDa,saldiGruppo,pdfAGriglia,righeDaVoci} from '../src/lib/finance.ts';
 test('monthly dates clamp without drifting after February',()=>{
 assert.deepEqual(monthlyDates('2026-01-31','2026-04-30'),['2026-01-31','2026-02-28','2026-03-31','2026-04-30']);
 assert.deepEqual(monthlyDates('2024-01-31','2024-03-30'),['2024-01-31','2024-02-29']);
@@ -148,4 +148,52 @@ test('in un gruppo di tre i saldi si compensano e il giro e minimo',()=>{
  assert.ok(giro.length<=2);
  const dovuto=Object.values(netti).filter(v=>v<0).reduce((a,b)=>a-b,0);
  assert.equal(giro.reduce((s,g)=>s+g.importo,0),dovuto);
+});
+
+const paginaBanca=[
+ {t:'Data',x:40,y:700},{t:'Valuta',x:95,y:700},{t:'Descrizione',x:150,y:700},{t:'Dare',x:400,y:700},{t:'Avere',x:470,y:700},{t:'Saldo',x:540,y:700},
+ {t:'12/01/2026',x:40,y:680},{t:'12/01/2026',x:95,y:680},{t:'PAGAMENTO POS ESSELUNGA',x:150,y:680},{t:'45,30',x:402,y:680},{t:'1.954,70',x:540,y:680},
+ {t:'MILANO CARTA 1234',x:150,y:672},
+ {t:'15/01/2026',x:40,y:650},{t:'STIPENDIO GENNAIO',x:150,y:650},{t:'1.850,00',x:468,y:650},{t:'3.804,70',x:540,y:650},
+ {t:'Saldo finale al 31/01/2026',x:40,y:600},{t:'3.804,70',x:540,y:600},
+];
+test('le parole del PDF tornano righe nello stesso ordine del foglio',()=>{
+const righe=righeDaVoci(paginaBanca);
+assert.equal(righe[0][0].t,'Data');
+assert.deepEqual(righe[1].map(v=>v.t),['12/01/2026','12/01/2026','PAGAMENTO POS ESSELUNGA','45,30','1.954,70']);
+assert.deepEqual(righe[2].map(v=>v.t),['MILANO CARTA 1234']);
+});
+test('un estratto conto PDF diventa una griglia come quella del CSV',()=>{
+const g=pdfAGriglia([paginaBanca]);
+assert.deepEqual(g[0],['Data','Descrizione','Importo','Uscite','Entrate']);
+assert.equal(g.length,3,'due movimenti, il saldo finale non e un movimento');
+assert.deepEqual(g[1],['12/01/2026','PAGAMENTO POS ESSELUNGA MILANO CARTA 1234','','45,30','']);
+assert.deepEqual(g[2],['15/01/2026','STIPENDIO GENNAIO','','','1.850,00']);
+});
+test('dalla griglia del PDF escono movimenti con il segno giusto',()=>{
+const g=pdfAGriglia([paginaBanca]);
+const {righe,scartate}=convertiRighe(g,rilevaColonne(g[0]),1);
+assert.equal(scartate,0);
+assert.deepEqual(righe[0],{date:'2026-01-12',amount:4530,description:'PAGAMENTO POS ESSELUNGA MILANO CARTA 1234',type:'expense'});
+assert.deepEqual(righe[1],{date:'2026-01-15',amount:185000,description:'STIPENDIO GENNAIO',type:'income'});
+});
+test('senza colonne dare e avere il segno arriva dal meno davanti',()=>{
+const pagina=[
+ {t:'Data',x:40,y:700},{t:'Operazione',x:150,y:700},{t:'Importo',x:400,y:700},
+ {t:'03/02/2026',x:40,y:680},{t:'NETFLIX',x:150,y:680},{t:'-12,99',x:400,y:680},
+ {t:'05/02/2026',x:40,y:660},{t:'BONIFICO DA MARIO',x:150,y:660},{t:'250,00',x:400,y:660},
+];
+const g=pdfAGriglia([pagina]);
+assert.deepEqual(g[1],['03/02/2026','NETFLIX','-12,99','','']);
+const {righe}=convertiRighe(g,rilevaColonne(g[0]),1);
+assert.equal(righe[0].type,'expense');assert.equal(righe[0].amount,1299);
+assert.equal(righe[1].type,'income');assert.equal(righe[1].amount,25000);
+});
+test('il meno scritto dopo il numero conta come uscita',()=>{
+const pagina=[
+ {t:'Data',x:40,y:700},{t:'Causale',x:150,y:700},{t:'Importo',x:400,y:700},
+ {t:'09/03/2026',x:40,y:680},{t:'BOLLETTA ENEL',x:150,y:680},{t:'88,40-',x:400,y:680},
+];
+const g=pdfAGriglia([pagina]);
+assert.equal(g[1][2],'-88,40');
 });

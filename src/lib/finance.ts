@@ -233,3 +233,65 @@ export function saldiGruppo(accountId:string,partecipanti:string[],movimenti:Sha
  }
  return netti;
 }
+
+// ================= Estratto conto in PDF =================
+// Il PDF non ha colonne: ha parole con delle coordinate. Qui le rimettiamo in
+// righe e proviamo a capire quale numero e' l'importo e da che parte sta.
+export type VocePdf={t:string,x:number,y:number};
+const NUMERO=/^[-+]?(?:\d{1,3}(?:\.\d{3})*|\d+),\d{2}[-+]?$/;
+const DATA_BREVE=/^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/;
+const importoPdf=(s:string)=>{const t=s.trim();return t.endsWith('-')?'-'+t.slice(0,-1):t.replace(/^\+/,'');};
+
+// Raggruppa le parole che stanno alla stessa altezza: una riga dell'estratto.
+export function righeDaVoci(voci:VocePdf[],tolleranza=3):VocePdf[][]{
+ const ordinate=voci.filter(v=>v.t.trim()!=='').slice().sort((a,b)=>b.y-a.y||a.x-b.x);
+ const righe:VocePdf[][]=[];
+ for(const v of ordinate){
+  const ultima=righe[righe.length-1];
+  if(ultima&&Math.abs(ultima[0].y-v.y)<=tolleranza)ultima.push(v);
+  else righe.push([v]);
+ }
+ return righe.map(r=>r.slice().sort((a,b)=>a.x-b.x));
+}
+
+// Trasforma le pagine in una griglia uguale a quella di un CSV, cosi' il resto
+// dell'importazione (anteprima, doppioni, categorie) funziona senza cambiare.
+export function pdfAGriglia(pagine:VocePdf[][]):string[][]{
+ const righe:VocePdf[][]=[];
+ for(const p of pagine)for(const r of righeDaVoci(p))righe.push(r);
+ let xUscita=NaN,xEntrata=NaN;
+ for(const r of righe)for(const v of r){
+  const k=ripulisci(v.t);
+  if(!k)continue;
+  if(Number.isNaN(xUscita)&&vociUscita.includes(k))xUscita=v.x;
+  if(Number.isNaN(xEntrata)&&vociEntrata.includes(k))xEntrata=v.x;
+ }
+ const dueColonne=!Number.isNaN(xUscita)&&!Number.isNaN(xEntrata)&&Math.abs(xUscita-xEntrata)>10;
+ const griglia:string[][]=[['Data','Descrizione','Importo','Uscite','Entrate']];
+ for(const r of righe){
+  const testi=r.map(v=>v.t.trim()).filter(Boolean);
+  if(!testi.length)continue;
+  const numeri=r.filter(v=>NUMERO.test(v.t.trim()));
+  if(!DATA_BREVE.test(testi[0])){
+   // Riga senza data: e' la continuazione della descrizione di quella sopra.
+   const ultima=griglia[griglia.length-1];
+   if(griglia.length>1&&!numeri.length&&testi.length<12&&testi.join(' ').length>2)
+    ultima[1]=(ultima[1]+' '+testi.join(' ')).replace(/\s+/g,' ').trim().slice(0,160);
+   continue;
+  }
+  let inizio=1;
+  while(inizio<testi.length&&inizio<3&&DATA_BREVE.test(testi[inizio]))inizio++;
+  const primoNumero=testi.findIndex((t,i)=>i>=inizio&&NUMERO.test(t));
+  const descrizione=testi.slice(inizio,primoNumero<0?undefined:primoNumero).join(' ').replace(/\s+/g,' ').trim().slice(0,160);
+  let importo='',uscita='',entrata='';
+  if(numeri.length&&dueColonne){
+   const vicino=(v:VocePdf)=>Math.min(Math.abs(v.x-xUscita),Math.abs(v.x-xEntrata));
+   const scelto=numeri.reduce((a,b)=>vicino(b)<vicino(a)?b:a);
+   if(Math.abs(scelto.x-xUscita)<=Math.abs(scelto.x-xEntrata))uscita=importoPdf(scelto.t);
+   else entrata=importoPdf(scelto.t);
+  }else if(numeri.length)importo=importoPdf(numeri[0].t);
+  if(!importo&&!uscita&&!entrata)continue;
+  griglia.push([testi[0],descrizione||'Movimento importato',importo,uscita,entrata]);
+ }
+ return griglia;
+}
