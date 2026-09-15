@@ -1,8 +1,8 @@
 import {createRoot} from 'react-dom/client';
-import {useEffect,useState} from 'react';
+import {useEffect,useState,lazy,Suspense} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {Wallet,LogOut,Users,Handshake,PieChart,Repeat2,ShieldCheck,Smartphone,PiggyBank} from 'lucide-react';
-import Dashboard from './dashboard';
+const Dashboard=lazy(()=>import('./dashboard'));
 import Install from './install';
 import {Button} from './components/ui/button';
 import {Input} from './components/ui/input';
@@ -15,7 +15,7 @@ function App(){
  async function join(){setBusy(true);setError('');try{const res=await apiFetch('/api/sharing',{method:'POST',body:JSON.stringify({action:'accept',token:invite})});const data=await res.json();if(!res.ok)throw Error(data.error);sessionStorage.removeItem('tasca-invite');setInvite('');setDashboardKey(n=>n+1);setMessage('Conto condiviso aggiunto. Lo trovi in Conti.');}catch(e:any){setError(e.message);}finally{setBusy(false);}}
  if(!configured)return <main className="auth-wrap"><div className="auth-card"><Wallet size={36}/><h1>Tasca è quasi pronta.</h1><p>Chi gestisce questa copia deve completare il collegamento per gli account e i conti condivisi.</p><p>Apri la guida <b>docs/PUBBLICARE.md</b> nella cartella del progetto. Dopo la configurazione, qui compariranno “Accedi” e “Crea account”.</p><p>Nessun conto o movimento viene salvato in questa schermata.</p></div></main>;
  if(loading)return <div className="empty">Apertura di Tasca…</div>;
- if(session&&mode!=='update')return <><div className="session-bar"><span>{session.user.email}</span><Button variant="ghost" onClick={async()=>{setError('');const {error}=await supabase!.auth.signOut();if(error)setError('Uscita non riuscita. Riprova con una connessione attiva.');else {setSession(null);setMessage('');setPassword('');}}}><LogOut size={16}/> Esci</Button></div>{invite&&<section className="invite-banner"><Users/><div><b>Hai ricevuto un invito a un conto.</b><p>Accettando potrai vedere e modificare i movimenti di quel conto. Accetta solo inviti da persone che conosci.</p></div><Button disabled={busy} onClick={join}>Accetta invito</Button><Button variant="ghost" onClick={()=>{sessionStorage.removeItem('tasca-invite');setInvite('');}}>Ignora</Button></section>}{message&&<p className="feedback" role="status">{message}</p>}{error&&<p className="error" role="alert">{error}</p>}<Dashboard key={session.user.id+dashboardKey}/></>;
+ if(session&&mode!=='update')return <><div className="session-bar"><span>{session.user.email}</span><Button variant="ghost" onClick={async()=>{setError('');const {error}=await supabase!.auth.signOut();if(error)setError('Uscita non riuscita. Riprova con una connessione attiva.');else {setSession(null);setMessage('');setPassword('');}}}><LogOut size={16}/> Esci</Button></div>{invite&&<section className="invite-banner"><Users/><div><b>Hai ricevuto un invito a un conto.</b><p>Accettando potrai vedere e modificare i movimenti di quel conto. Accetta solo inviti da persone che conosci.</p></div><Button disabled={busy} onClick={join}>Accetta invito</Button><Button variant="ghost" onClick={()=>{sessionStorage.removeItem('tasca-invite');setInvite('');}}>Ignora</Button></section>}{message&&<p className="feedback" role="status">{message}</p>}{error&&<p className="error" role="alert">{error}</p>}<Suspense fallback={<div className="empty">Apertura dei tuoi conti…</div>}><Dashboard key={session.user.id+dashboardKey}/></Suspense></>;
  return <main className="auth-wrap con-vetrina"><section className="vetrina">
   <div className="auth-brand"><Wallet/> tasca.</div>
   <h1 className="claim">I conti di casa, in due,<br/>senza doverseli ricordare.</h1>
