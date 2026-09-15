@@ -49,15 +49,15 @@ export default function Report({movimenti,nome}:{movimenti:any[],nome?:string}){
        <span>{NOMI[m.mese-1].slice(0,3)}</span>
       </div>)}
      </div>
-     <table className="report-table">
+     <div className="tabella-scroll"><table className="report-table">
       <thead><tr><th>Mese</th><th>Entrate</th><th>Uscite</th><th>Differenza</th></tr></thead>
       <tbody>{s.mesi.filter(m=>m.entrate||m.uscite).map(m=><tr key={m.mese}>
        <td>{NOMI[m.mese-1]}</td><td>{money(m.entrate)}</td><td>{money(m.uscite)}</td>
        <td className={m.entrate-m.uscite>=0?'buono':'meno'}>{money(m.entrate-m.uscite)}</td></tr>)}</tbody>
       <tfoot><tr><td>Totale</td><td>{money(s.entrate)}</td><td>{money(s.uscite)}</td><td>{money(s.saldo)}</td></tr></tfoot>
-     </table>
+     </table></div>
      <h3>Dove sono andati i soldi</h3>
-     <table className="report-table">
+     <div className="tabella-scroll"><table className="report-table">
       <thead><tr><th>Categoria</th><th>Spesa {anno}</th><th>Quota</th><th>Rispetto al {Number(anno)-1}</th></tr></thead>
       <tbody>{s.categorie.map((c,i)=><tr key={c.nome}>
        <td><i className="pallino" style={{background:COLORI[i%COLORI.length]}}/> {c.nome}</td>
@@ -66,7 +66,7 @@ export default function Report({movimenti,nome}:{movimenti:any[],nome?:string}){
        <td>{c.variazione===null?<span className="meta">nessun confronto</span>
         :<span className={c.variazione>0?'meno':'buono'}>{c.variazione>0?<TrendingUp size={14}/>:<TrendingDown size={14}/>} {c.variazione>0?'+':''}{c.variazione}% ({money(c.precedente)})</span>}</td>
       </tr>)}</tbody>
-     </table>
+     </table></div>
      <p className="report-nota">I trasferimenti tra conti non sono contati come entrate o uscite. Gli importi provengono dai movimenti che hai registrato: Tasca non si collega alla banca e non verifica i saldi reali.</p>
     </div>}
  </section>;

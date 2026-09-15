@@ -177,3 +177,29 @@
  .mobile-brand{display:flex}
  .vetrina>.auth-brand{font-size:24px}
 }
+.tabella-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:8px}
+.tabella-scroll .report-table{min-width:430px}
+@media(max-width:640px){
+ .report .panel-head{flex-direction:column;align-items:stretch;gap:12px}
+ .report .report-tools{width:100%}
+ .report .report-tools select{flex:0 0 96px}
+ .report .report-tools button{flex:1;justify-content:center}
+ .report-cards{grid-template-columns:1fr 1fr;gap:10px}
+ .report-cards>div{padding:13px}
+ .report-cards strong{font-size:18px}
+ .report-cards span{font-size:12px}
+ .report-cards small{font-size:11px;line-height:1.4;display:block}
+ .report-head h1{font-size:22px}
+ .report-bars{height:120px;gap:4px}
+ .report-bars i{width:6px}
+ .report-bars span{font-size:10px}
+ .report-table{font-size:12px}
+ .report-table th,.report-table td{padding:7px 5px}
+ .goals .panel-head,.importa .panel-head,.backup .panel-head,.split .panel-head{flex-direction:column;align-items:stretch;gap:10px}
+ .goals .panel-head button,.importa .panel-head button{width:100%;justify-content:center}
+ .goal-card>strong{font-size:20px}
+ .split-row>div{min-width:0}
+ .split-history{flex-wrap:wrap}
+ .import-riepilogo{gap:8px;flex-direction:column}
+ .allegato{flex-wrap:wrap}
+}
