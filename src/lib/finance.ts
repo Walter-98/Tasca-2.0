@@ -62,3 +62,174 @@ export function monthlyTarget(goal:Goal,today:string){
  const months=monthsBetween(today,goal.due_date);
  return months<=0?left:Math.ceil(left/months);
 }
+
+// ================= Importazione estratti conto =================
+export type RigaCsv={date:string,amount:number,description:string,type:'income'|'expense'};
+
+// Divide un CSV rispettando virgolette e ritorni a capo dentro i campi.
+export function leggiCsv(testo:string,separatore?:string):string[][]{
+ const t=testo.replace(/^﻿/,'').replace(/\r\n?/g,'\n');
+ const sep=separatore||indovinaSeparatore(t);
+ const righe:string[][]=[];let campo='',riga:string[]=[],dentro=false;
+ for(let i=0;i<t.length;i++){
+  const c=t[i];
+  if(dentro){
+   if(c==='"'){if(t[i+1]==='"'){campo+='"';i++;}else dentro=false;}
+   else campo+=c;
+  }else if(c==='"')dentro=true;
+  else if(c===sep){riga.push(campo);campo='';}
+  else if(c==='\n'){riga.push(campo);campo='';if(riga.some(x=>x.trim()!==''))righe.push(riga);riga=[];}
+  else campo+=c;
+ }
+ riga.push(campo);
+ if(riga.some(x=>x.trim()!==''))righe.push(riga);
+ return righe.map(r=>r.map(c=>c.trim()));
+}
+export function indovinaSeparatore(testo:string){
+ const campione=testo.split('\n').slice(0,10).join('\n');
+ const conta=(s:string)=>(campione.match(new RegExp('\\'+s,'g'))||[]).length;
+ return [';','\t',',','|'].sort((a,b)=>conta(b)-conta(a))[0];
+}
+
+// "1.234,56" "-1,234.56" "€ 45,20" "(45,20)" -> centesimi. null se non e' un importo.
+export function leggiImporto(v:string):number|null{
+ if(v==null)return null;
+ let s=String(v).replace(/[\s €$£]/g,'');
+ if(!s)return null;
+ let segno=1;
+ if(/^\(.*\)$/.test(s)){segno=-1;s=s.slice(1,-1);}
+ if(/^[-−]/.test(s)){segno=-1;s=s.slice(1);}
+ else if(s.startsWith('+'))s=s.slice(1);
+ if(!/^[\d.,]+$/.test(s)||!/\d/.test(s))return null;
+ const ultimoPunto=s.lastIndexOf('.'),ultimaVirgola=s.lastIndexOf(',');
+ let decimale=-1;
+ if(ultimoPunto>=0&&ultimaVirgola>=0)decimale=Math.max(ultimoPunto,ultimaVirgola);
+ else{
+  const solo=Math.max(ultimoPunto,ultimaVirgola);
+  if(solo>=0&&s.length-solo-1<=2&&s.split(s[solo]).length===2)decimale=solo;
+ }
+ const intero=(decimale<0?s:s.slice(0,decimale)).replace(/[.,]/g,'');
+ const frazione=decimale<0?'':s.slice(decimale+1).padEnd(2,'0').slice(0,2);
+ const centesimi=Number(intero||'0')*100+Number(frazione||'0');
+ return Number.isFinite(centesimi)?segno*centesimi:null;
+}
+
+// 31/01/2026, 31-01-26, 2026-01-31, 31.01.2026 -> 2026-01-31
+export function leggiData(v:string):string|null{
+ if(!v)return null;
+ const s=String(v).trim().slice(0,10).replace(/[.\s]/g,'/').replace(/-/g,'/');
+ let m=s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+ if(m){const d=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;return validDate(d)?d:null;}
+ m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+ if(!m)return null;
+ const anno=m[3].length===2?(Number(m[3])>70?'19':'20')+m[3]:m[3];
+ const d=`${anno}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+ return validDate(d)?d:null;
+}
+
+const vociData=['data','date','datacontabile','datavaluta','dataoperazione','giorno'];
+const vociImporto=['importo','amount','ammontare','valore','saldo'];
+const vociUscita=['uscite','uscita','dare','addebiti','addebito','debito','spese','withdrawal','debit'];
+const vociEntrata=['entrate','entrata','avere','accrediti','accredito','credito','deposit','credit'];
+const vociDescrizione=['descrizione','causale','operazione','description','memo','dettagli','note'];
+const ripulisci=(s:string)=>s.toLowerCase().normalize('NFD').replace(/[^a-z]/g,'');
+
+export function rilevaColonne(intestazione:string[]){
+ const trova=(voci:string[])=>{
+  const i=intestazione.findIndex(c=>voci.includes(ripulisci(c)));
+  return i>=0?i:intestazione.findIndex(c=>voci.some(v=>ripulisci(c).startsWith(v)));
+ };
+ return {data:trova(vociData),importo:trova(vociImporto),uscita:trova(vociUscita),entrata:trova(vociEntrata),descrizione:trova(vociDescrizione)};
+}
+
+export function impronta(r:{date:string,amount:number,description:string,type:string}){
+ return `${r.date}|${r.type}|${r.amount}|${r.description.toLowerCase().replace(/\s+/g,' ').trim().slice(0,60)}`;
+}
+
+// Converte le righe grezze in movimenti, scartando quelle non interpretabili.
+export function convertiRighe(righe:string[][],col:{data:number,importo:number,uscita:number,entrata:number,descrizione:number},saltaPrima=1){
+ const buone:RigaCsv[]=[];let scartate=0;
+ for(const r of righe.slice(saltaPrima)){
+  const date=leggiData(r[col.data]||'');
+  let importo=col.importo>=0?leggiImporto(r[col.importo]||''):null;
+  if(importo==null&&col.entrata>=0){const e=leggiImporto(r[col.entrata]||'');if(e)importo=Math.abs(e);}
+  if(importo==null&&col.uscita>=0){const u=leggiImporto(r[col.uscita]||'');if(u)importo=-Math.abs(u);}
+  const description=(col.descrizione>=0?r[col.descrizione]||'':'').replace(/\s+/g,' ').trim().slice(0,160);
+  if(!date||importo==null||importo===0){scartate++;continue;}
+  buone.push({date,amount:Math.abs(importo),description:description||'Movimento importato',type:importo>0?'income':'expense'});
+ }
+ return {righe:buone,scartate};
+}
+
+// Regole testuali: la chiave e' un pezzo di descrizione, il valore la categoria.
+export function categoriaDa(descrizione:string,regole:Record<string,string>){
+ const d=descrizione.toLowerCase();
+ for(const [chiave,categoria] of Object.entries(regole))if(chiave&&d.includes(chiave.toLowerCase()))return categoria;
+ return null;
+}
+
+// ================= Gruppi: il giro di rimborsi piu' corto =================
+export function semplificaSaldi(netti:Record<string,number>){
+ const debitori=Object.entries(netti).filter(([,v])=>v<0).map(([k,v])=>({k,v:-v})).sort((a,b)=>b.v-a.v);
+ const creditori=Object.entries(netti).filter(([,v])=>v>0).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+ const giro:{da:string,a:string,importo:number}[]=[];
+ let i=0,j=0;
+ while(i<debitori.length&&j<creditori.length){
+  const importo=Math.min(debitori[i].v,creditori[j].v);
+  if(importo>0)giro.push({da:debitori[i].k,a:creditori[j].k,importo});
+  debitori[i].v-=importo;creditori[j].v-=importo;
+  if(debitori[i].v<=0)i++;
+  if(creditori[j].v<=0)j++;
+ }
+ return giro;
+}
+
+// ================= Rendiconto annuale =================
+export function statisticheAnno(movimenti:{type:string,amount:number,date:string,category:string}[],anno:string){
+ const di=(a:string)=>movimenti.filter(m=>m.date.startsWith(a));
+ const somma=(righe:{type:string,amount:number}[],tipo:string)=>righe.filter(m=>m.type===tipo).reduce((s,m)=>s+m.amount,0);
+ const correnti=di(anno),precedenti=di(String(Number(anno)-1));
+ const mesi=Array.from({length:12},(_,i)=>{
+  const chiave=`${anno}-${String(i+1).padStart(2,'0')}`;
+  const righe=movimenti.filter(m=>m.date.startsWith(chiave));
+  return {mese:i+1,entrate:somma(righe,'income'),uscite:somma(righe,'expense')};
+ });
+ const perCategoria=(righe:typeof movimenti)=>{
+  const mappa:Record<string,number>={};
+  for(const m of righe)if(m.type==='expense')mappa[m.category]=(mappa[m.category]||0)+m.amount;
+  return mappa;
+ };
+ const ora=perCategoria(correnti),prima=perCategoria(precedenti);
+ const categorie=Object.entries(ora).map(([nome,valore])=>({
+  nome,valore,
+  precedente:prima[nome]||0,
+  variazione:prima[nome]?Math.round((valore-prima[nome])/prima[nome]*100):null,
+ })).sort((a,b)=>b.valore-a.valore);
+ const entrate=somma(correnti,'income'),uscite=somma(correnti,'expense');
+ const mesiConDati=mesi.filter(m=>m.entrate||m.uscite).length||1;
+ return {
+  entrate,uscite,saldo:entrate-uscite,
+  entratePrecedenti:somma(precedenti,'income'),uscitePrecedenti:somma(precedenti,'expense'),
+  mediaUscite:Math.round(uscite/mesiConDati),mesi,categorie,
+  movimenti:correnti.filter(m=>m.type!=='transfer').length,
+ };
+}
+
+// Saldo di ciascun partecipante sul conto: positivo = ha messo piu' di quanto gli spetta.
+export function saldiGruppo(accountId:string,partecipanti:string[],movimenti:SharedMovement[],rimborsi:Settlement[]){
+ const netti:Record<string,number>={};
+ for(const p of partecipanti)netti[p]=0;
+ for(const m of movimenti){
+  if(m.account_id!==accountId||m.type!=='expense'||m.split==null||!m.owner_id||!(m.owner_id in netti))continue;
+  const altri=partecipanti.filter(p=>p!==m.owner_id);
+  const quota=othersShare(m.amount,m.split,altri.length);
+  netti[m.owner_id]+=quota*altri.length; // ha anticipato la quota degli altri
+  for(const a of altri)netti[a]-=quota;
+ }
+ for(const s of rimborsi){
+  if(s.account_id!==accountId)continue;
+  if(s.from_user in netti)netti[s.from_user]+=s.amount;
+  if(s.to_user in netti)netti[s.to_user]-=s.amount;
+ }
+ return netti;
+}

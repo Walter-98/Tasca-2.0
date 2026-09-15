@@ -6,7 +6,7 @@ import {Input} from '@/components/ui/input';
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {AlertDialog,AlertDialogTrigger,AlertDialogContent,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
 import {apiFetch} from './api';
-import {accountDebts,localToday,money,type Account,type Settlement,type SharedMovement} from '@/lib/finance';
+import {accountDebts,saldiGruppo,semplificaSaldi,localToday,money,type Account,type Settlement,type SharedMovement} from '@/lib/finance';
 import type {Member} from './sharing';
 type Rimborso={account:Account,email:string,importo:number,direction:string};
 export default function Split({accounts,movements,settlements,members,userId,refresh}:{accounts:Account[],movements:SharedMovement[],settlements:Settlement[],members:Member[],userId:string,refresh:()=>Promise<void>}){
@@ -19,7 +19,8 @@ export default function Split({accounts,movements,settlements,members,userId,ref
   const emails:Record<string,string>={};
   if(a.owner_id)emails[a.owner_id]=a.owner_email||'chi possiede il conto';
   for(const x of altri)emails[x.user_id]=x.email;
-  return {account:a,partecipanti,emails,saldi:accountDebts(a.id,userId,partecipanti,movements,settlements)};
+  const netti=saldiGruppo(a.id,partecipanti,movements,settlements);
+  return {account:a,partecipanti,emails,saldi:accountDebts(a.id,userId,partecipanti,movements,settlements),giro:semplificaSaldi(netti)};
  }).filter(x=>x.partecipanti.length>1&&x.partecipanti.includes(userId));
  if(condivisi.length===0)return null;
  async function send(v:any,messaggio:string){
@@ -36,13 +37,14 @@ export default function Split({accounts,movements,settlements,members,userId,ref
  }
  return <section className="panel split">
   <div className="panel-head"><div><h2>Chi deve quanto a chi</h2><p className="meta">Solo le spese marcate come divise entrano in questo conteggio.</p></div></div>
-  {condivisi.map(({account,saldi,emails})=><div className="split-account" key={account.id}>
+  {condivisi.map(({account,saldi,emails,partecipanti,giro})=><div className="split-account" key={account.id}>
    <h3><Scale size={17}/> {account.name}</h3>
    {Object.entries(saldi).map(([uid,netto])=><div className="split-row" key={uid}>
     <div><b>{emails[uid]||'Partecipante'}</b>
      <span>{netto>0?`ti deve ${money(netto)}`:netto<0?`devi ${money(-netto)}`:'siete in pari'}</span></div>
     <Button size="sm" variant="outline" disabled={busy} onClick={()=>apri(account,emails[uid]||'',netto)}><HandCoins size={15}/> Registra rimborso</Button>
    </div>)}
+   {partecipanti.length>2&&giro.length>0&&<div className="giro"><b>Il giro di rimborsi più corto</b>{giro.map((g,i)=><p key={i}>{g.da===userId?'Tu dai':`${emails[g.da]||'Partecipante'} dà`} {money(g.importo)} a {g.a===userId?'te':(emails[g.a]||'partecipante')}</p>)}<span className="meta">Con più di due persone conviene fare questi passaggi invece di saldare uno a uno.</span></div>}
    {settlements.filter(s=>s.account_id===account.id).slice(0,4).map(s=><div className="split-history" key={s.id}>
     <span>{new Date(s.date+'T12:00:00').toLocaleDateString('it-IT')} · {s.from_user===userId?'hai rimborsato':'hai ricevuto'} {money(s.amount)}{s.note?` · ${s.note}`:''}</span>
     <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="sm" aria-label="Elimina rimborso" disabled={busy}><Trash2 size={14}/></Button></AlertDialogTrigger>
