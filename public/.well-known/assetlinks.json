@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "io.github.walter98.tasca",
+    "sha256_cert_fingerprints": ["3E:D7:17:82:F7:9D:95:CD:08:77:5F:B1:A6:96:F4:40:19:36:4D:9E:4A:DA:2F:95:04:69:CB:C9:14:C8:BB:9E"]
+  }
+}]
