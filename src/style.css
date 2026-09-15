@@ -153,3 +153,27 @@
  .report-bars i{print-color-adjust:exact;-webkit-print-color-adjust:exact}
  .report-table{page-break-inside:auto}.report-table tr{page-break-inside:avoid}
 }
+.auth-wrap.con-vetrina{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,440px);gap:56px;place-items:center;max-width:1120px;margin:auto;padding:48px 24px}
+.vetrina{max-width:560px}
+.claim{font-size:38px;line-height:1.15;letter-spacing:-1.4px;margin:22px 0 16px}
+.claim-sub{font-size:16px;line-height:1.65;color:#6d6883;margin:0 0 30px;max-width:30em}
+.vetrina-punti{list-style:none;padding:0;margin:0 0 28px;display:grid;gap:18px}
+.vetrina-punti li{display:flex;gap:14px;align-items:flex-start}
+.vetrina-punti b{display:block;font-size:15px;margin-bottom:4px}
+.vetrina-punti span:last-child{font-size:14px;line-height:1.6;color:#7d788f}
+.vetrina-punti>li>div{min-width:0}
+.vetrina-fiducia{background:#f1eefb;border-radius:14px;padding:18px 20px;display:grid;gap:14px}
+.vetrina-fiducia p{margin:0;font-size:13.5px;line-height:1.6;color:#5f5877;display:flex;gap:9px;align-items:flex-start}
+.vetrina-fiducia svg{flex-shrink:0;margin-top:2px;color:#6f61c4}
+.vetrina-chiusura{font-size:13px;color:#8d88a0;margin-top:22px;line-height:1.6}
+.mobile-brand{display:none}
+@media(max-width:940px){
+ .auth-wrap.con-vetrina{grid-template-columns:1fr;gap:28px;padding:28px 18px}
+ .vetrina{max-width:520px}
+ .claim{font-size:29px;letter-spacing:-1px}
+ .claim-sub{font-size:15px;margin-bottom:24px}
+ .vetrina-punti{gap:14px}
+ .auth-wrap.con-vetrina .auth-card{width:100%;max-width:520px}
+ .mobile-brand{display:flex}
+ .vetrina>.auth-brand{font-size:24px}
+}
